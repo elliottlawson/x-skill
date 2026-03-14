@@ -6,9 +6,11 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
+// Connection renamed from skill_x-bookmarks to skill_x during package rename.
+
 return new class extends Migration
 {
-    protected $connection = 'skill_x-bookmarks';
+    protected $connection = 'skill_x';
 
     public function up(): void
     {

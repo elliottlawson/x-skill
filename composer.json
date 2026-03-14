@@ -1,6 +1,6 @@
 {
-    "name": "uno-skills/x-bookmarks",
-    "description": "Search and manage X/Twitter bookmarks through Connect Bridge OAuth integration",
+    "name": "uno-skills/x",
+    "description": "X/Twitter platform skill — bookmarks, tweet reading, and more via Connect Bridge OAuth",
     "type": "library",
     "license": "MIT",
     "require": {
@@ -8,19 +8,19 @@
     },
     "autoload": {
         "psr-4": {
-            "UnoSkills\\XBookmarks\\": "src/"
+            "UnoSkills\\X\\": "src/"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "UnoSkills\\XBookmarks\\XBookmarksServiceProvider"
+                "UnoSkills\\X\\XServiceProvider"
             ]
         },
         "uno-skill": {
-            "name": "x-bookmarks",
-            "title": "X Bookmarks",
-            "description": "Search, browse, and sync your X/Twitter bookmarks",
+            "name": "x",
+            "title": "X (Twitter)",
+            "description": "Search bookmarks, read tweets, and interact with the X platform",
             "danger_level": "moderate",
             "version": "1.0.0"
         }

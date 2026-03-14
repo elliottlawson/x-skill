@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace UnoSkills\XBookmarks;
+namespace UnoSkills\X;
 
 use App\Models\User;
 use App\Services\ConnectBridgeOAuthService;
@@ -18,16 +18,20 @@ class XApiClient
 
     private const MAX_BOOKMARKS = 800;
 
+    private const DB_CONNECTION = 'skill_x';
+
     public function __construct(
         private readonly ConnectBridgeOAuthService $connectBridge,
     ) {}
 
+    // ─── Bookmarks ──────────────────────────────────────────────
+
     /**
-     * @return array{bookmarks: array, total: int}|array{error: string}
+     * @return array{bookmarks: array, total: int, query: string}
      */
     public function searchBookmarks(int $userId, string $query, int $limit = 10): array
     {
-        $results = DB::connection('skill_x-bookmarks')
+        $results = DB::connection(self::DB_CONNECTION)
             ->table('bookmarks')
             ->where('user_id', $userId)
             ->where('text', 'ILIKE', '%'.str_replace(['%', '_'], ['\%', '\_'], $query).'%')
@@ -43,16 +47,16 @@ class XApiClient
     }
 
     /**
-     * @return array{bookmarks: array, total: int, offset: int}
+     * @return array{bookmarks: array, total: int, offset: int, showing: int}
      */
     public function listBookmarks(int $userId, int $limit = 20, int $offset = 0): array
     {
-        $total = DB::connection('skill_x-bookmarks')
+        $total = DB::connection(self::DB_CONNECTION)
             ->table('bookmarks')
             ->where('user_id', $userId)
             ->count();
 
-        $results = DB::connection('skill_x-bookmarks')
+        $results = DB::connection(self::DB_CONNECTION)
             ->table('bookmarks')
             ->where('user_id', $userId)
             ->orderByDesc('bookmarked_at')
@@ -66,24 +70,6 @@ class XApiClient
             'offset' => $offset,
             'showing' => $results->count(),
         ];
-    }
-
-    /**
-     * @return array{id: string, text: string, author_username: ?string, ...}|array{error: string}
-     */
-    public function getBookmark(int $userId, string $tweetId): array
-    {
-        $bookmark = DB::connection('skill_x-bookmarks')
-            ->table('bookmarks')
-            ->where('user_id', $userId)
-            ->where('tweet_id', $tweetId)
-            ->first();
-
-        if (! $bookmark) {
-            return ['error' => 'Bookmark not found'];
-        }
-
-        return $this->formatBookmark($bookmark, full: true);
     }
 
     /**
@@ -138,7 +124,7 @@ class XApiClient
                 }
             }
 
-            DB::connection('skill_x-bookmarks')
+            DB::connection(self::DB_CONNECTION)
                 ->table('sync_state')
                 ->updateOrInsert(
                     ['user_id' => $userId, 'key' => 'last_sync_at'],
@@ -155,6 +141,106 @@ class XApiClient
             return ['error' => 'Sync failed: '.$e->getMessage()];
         }
     }
+
+    // ─── Tweets ─────────────────────────────────────────────────
+
+    /**
+     * Fetch a tweet (or thread context) by ID or URL.
+     *
+     * @return array{tweet: array}|array{error: string}
+     */
+    public function fetchTweet(int $userId, string $tweetRef): array
+    {
+        $tweetId = $this->extractTweetId($tweetRef);
+
+        if (! $tweetId) {
+            return ['error' => 'Could not parse a tweet ID from the provided reference. Provide a tweet URL or numeric ID.'];
+        }
+
+        $user = User::find($userId);
+
+        if (! $user) {
+            return ['error' => 'User not found'];
+        }
+
+        $tokenData = $this->connectBridge->getProviderTokenBySlug($user, 'x-twitter');
+
+        if (! $tokenData) {
+            return ['error' => 'X/Twitter account not connected. Connect it through Settings > Connections.'];
+        }
+
+        $accessToken = $tokenData['access_token'];
+
+        try {
+            $response = Http::withToken($accessToken)
+                ->timeout(30)
+                ->get(self::X_API_BASE."/tweets/{$tweetId}", [
+                    'tweet.fields' => 'created_at,author_id,conversation_id,entities,in_reply_to_user_id,attachments,public_metrics',
+                    'expansions' => 'author_id,attachments.media_keys,referenced_tweets.id',
+                    'user.fields' => 'username,name',
+                    'media.fields' => 'url,preview_image_url,type,width,height,alt_text',
+                ]);
+
+            if ($response->status() === 403) {
+                return ['error' => 'X API access denied. This may require a different API plan.'];
+            }
+
+            $response->throw();
+
+            $data = $response->json();
+
+            if (! isset($data['data'])) {
+                return ['error' => 'Tweet not found'];
+            }
+
+            $usersMap = $this->buildUsersMap($data);
+            $mediaMap = $this->buildMediaMap($data);
+
+            $tweet = $this->parseTweet($data['data'], $usersMap, $mediaMap);
+
+            // Include public metrics if available
+            if (isset($data['data']['public_metrics'])) {
+                $tweet['metrics'] = $data['data']['public_metrics'];
+            }
+
+            // Build tweet URL
+            $tweet['url'] = $tweet['author_username']
+                ? "https://x.com/{$tweet['author_username']}/status/{$tweet['tweet_id']}"
+                : null;
+
+            return ['tweet' => $tweet];
+        } catch (\Throwable $e) {
+            Log::error('X tweet fetch failed', [
+                'user_id' => $userId,
+                'tweet_id' => $tweetId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['error' => 'Failed to fetch tweet: '.$e->getMessage()];
+        }
+    }
+
+    /**
+     * Extract a tweet ID from a URL or bare ID string.
+     */
+    public function extractTweetId(string $tweetRef): ?string
+    {
+        $tweetRef = trim($tweetRef);
+
+        // Bare numeric ID
+        if (preg_match('/^\d+$/', $tweetRef)) {
+            return $tweetRef;
+        }
+
+        // x.com or twitter.com URL
+        if (preg_match('#(?:x\.com|twitter\.com)/\w+/status/(\d+)#i', $tweetRef, $matches)) {
+            return $matches[1];
+        }
+
+        return null;
+    }
+
+    // ─── Internal helpers ───────────────────────────────────────
 
     private function getXUserId(string $accessToken): string
     {
@@ -185,11 +271,18 @@ class XApiClient
             ->timeout(30)
             ->get(self::X_API_BASE."/users/{$xUserId}/bookmarks", $params);
 
+        if ($response->status() === 403) {
+            throw new \RuntimeException('X API access denied. This may require a different API plan.');
+        }
+
         $response->throw();
 
         return $response->json();
     }
 
+    /**
+     * @return array<string, array{username: string, name: string}>
+     */
     private function buildUsersMap(array $data): array
     {
         $map = [];
@@ -204,6 +297,9 @@ class XApiClient
         return $map;
     }
 
+    /**
+     * @return array<string, array>
+     */
     private function buildMediaMap(array $data): array
     {
         $map = [];
@@ -252,7 +348,7 @@ class XApiClient
 
     private function upsertBookmark(int $userId, array $parsed): bool
     {
-        $existing = DB::connection('skill_x-bookmarks')
+        $existing = DB::connection(self::DB_CONNECTION)
             ->table('bookmarks')
             ->where('user_id', $userId)
             ->where('tweet_id', $parsed['tweet_id'])
@@ -262,7 +358,7 @@ class XApiClient
             return false;
         }
 
-        DB::connection('skill_x-bookmarks')
+        DB::connection(self::DB_CONNECTION)
             ->table('bookmarks')
             ->insert([
                 'user_id' => $userId,
