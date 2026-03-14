@@ -34,6 +34,11 @@ class XBookmarksSkill extends BaseSkill
         return true;
     }
 
+    public function alwaysLoad(): bool
+    {
+        return true;
+    }
+
     public function triggers(): array
     {
         return [
