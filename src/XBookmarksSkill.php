@@ -75,7 +75,8 @@ class XBookmarksSkill extends BaseSkill
             ->for('Search through the user\'s X/Twitter bookmarks by keyword. Returns matching tweets with author info, text, and metadata.')
             ->withStringParameter('query', 'Search query to find in bookmark text')
             ->withNumberParameter('limit', 'Maximum results to return (default: 10)', required: false)
-            ->using(function (string $query, int $limit = 10): string {
+            ->using(function (string $query, ?int $limit = null): string {
+                $limit = $limit ?? 10;
                 $userId = $this->getContext()['user_id'] ?? null;
 
                 if (! $userId) {
@@ -92,7 +93,9 @@ class XBookmarksSkill extends BaseSkill
             ->for('List the user\'s most recent X/Twitter bookmarks. Use this to browse bookmarks without a specific search query.')
             ->withNumberParameter('limit', 'Number of bookmarks to return (default: 20)', required: false)
             ->withNumberParameter('offset', 'Number of bookmarks to skip for pagination (default: 0)', required: false)
-            ->using(function (int $limit = 20, int $offset = 0): string {
+            ->using(function (?int $limit = null, ?int $offset = null): string {
+                $limit = $limit ?? 20;
+                $offset = $offset ?? 0;
                 $userId = $this->getContext()['user_id'] ?? null;
 
                 if (! $userId) {
