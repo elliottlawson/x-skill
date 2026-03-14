@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    protected $connection = 'x-bookmarks';
+    protected $connection = 'skill_x-bookmarks';
 
     public function up(): void
     {

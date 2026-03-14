@@ -27,7 +27,7 @@ class XApiClient
      */
     public function searchBookmarks(int $userId, string $query, int $limit = 10): array
     {
-        $results = DB::connection('x-bookmarks')
+        $results = DB::connection('skill_x-bookmarks')
             ->table('bookmarks')
             ->where('user_id', $userId)
             ->where('text', 'ILIKE', '%'.str_replace(['%', '_'], ['\%', '\_'], $query).'%')
@@ -47,12 +47,12 @@ class XApiClient
      */
     public function listBookmarks(int $userId, int $limit = 20, int $offset = 0): array
     {
-        $total = DB::connection('x-bookmarks')
+        $total = DB::connection('skill_x-bookmarks')
             ->table('bookmarks')
             ->where('user_id', $userId)
             ->count();
 
-        $results = DB::connection('x-bookmarks')
+        $results = DB::connection('skill_x-bookmarks')
             ->table('bookmarks')
             ->where('user_id', $userId)
             ->orderByDesc('bookmarked_at')
@@ -73,7 +73,7 @@ class XApiClient
      */
     public function getBookmark(int $userId, string $tweetId): array
     {
-        $bookmark = DB::connection('x-bookmarks')
+        $bookmark = DB::connection('skill_x-bookmarks')
             ->table('bookmarks')
             ->where('user_id', $userId)
             ->where('tweet_id', $tweetId)
@@ -138,7 +138,7 @@ class XApiClient
                 }
             }
 
-            DB::connection('x-bookmarks')
+            DB::connection('skill_x-bookmarks')
                 ->table('sync_state')
                 ->updateOrInsert(
                     ['user_id' => $userId, 'key' => 'last_sync_at'],
@@ -252,7 +252,7 @@ class XApiClient
 
     private function upsertBookmark(int $userId, array $parsed): bool
     {
-        $existing = DB::connection('x-bookmarks')
+        $existing = DB::connection('skill_x-bookmarks')
             ->table('bookmarks')
             ->where('user_id', $userId)
             ->where('tweet_id', $parsed['tweet_id'])
@@ -262,7 +262,7 @@ class XApiClient
             return false;
         }
 
-        DB::connection('x-bookmarks')
+        DB::connection('skill_x-bookmarks')
             ->table('bookmarks')
             ->insert([
                 'user_id' => $userId,
